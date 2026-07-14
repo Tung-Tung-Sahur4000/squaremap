@@ -125,9 +125,7 @@ public final class RadiusRender extends AbstractRender {
                 Logging.logger().error("Exception executing radius render for region {}", region, ex);
                 break;
             }
-            if (this.running()) {
-                this.mapWorld.saveImage(image);
-            }
+            this.saveRegion(image, region, true);
         }
     }
 }

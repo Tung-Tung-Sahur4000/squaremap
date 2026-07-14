@@ -30,7 +30,11 @@ public final class FabricMapUpdates {
     public void register() {
         // listen to fabric api events
         PlayerBlockBreakEvents.AFTER.register(this::afterBlockBreak);
-        ServerChunkEvents.CHUNK_GENERATE.register((world, chunk) -> this.markChunk(world, chunk.getPos()));
+        ServerChunkEvents.CHUNK_LOAD.register((level, chunk, generated) -> {
+            if (generated) {
+                this.markChunk(level, chunk.getPos());
+            }
+        });
 
         // these are generic events fired by squaremap's mixins, covering cases
         // where there isn't a fabric api event
@@ -68,7 +72,7 @@ public final class FabricMapUpdates {
     }
 
     private void markChunk(final ServerLevel level, final ChunkPos chunk) {
-        this.markChunk(level, new ChunkCoordinate(chunk.x, chunk.z));
+        this.markChunk(level, new ChunkCoordinate(chunk.x(), chunk.z()));
     }
 
     private void markChunk(final ServerLevel level, final ChunkCoordinate chunk) {

@@ -82,7 +82,7 @@ public final class BackgroundRender extends AbstractRender {
                     return;
                 }
                 chunksToRenderInRegion.forEach(chunks::remove);
-                this.mapWorld.saveImage(image);
+                this.saveRegion(image, region, false);
             }));
         });
 

@@ -106,7 +106,7 @@ public final class UpdateWorldData implements Runnable {
         final WorldConfig worldConfig
     ) {
         final Map<String, Object> spawn = new HashMap<>();
-        final BlockPos loc = level.getSharedSpawnPos();
+        final BlockPos loc = mapWorld.getAnySpawnPos();
         spawn.put("x", loc.getX());
         spawn.put("z", loc.getZ());
 
@@ -138,6 +138,7 @@ public final class UpdateWorldData implements Runnable {
         settings.put("zoom", zoom);
         settings.put("marker_update_interval", worldConfig.MARKER_API_UPDATE_INTERVAL_SECONDS);
         settings.put("tiles_update_interval", worldConfig.BACKGROUND_RENDER_INTERVAL_SECONDS);
+        settings.put("biomes", worldConfig.MAP_BIOMES_EXPORT_WEB);
 
         FileUtil.atomicWriteJsonAsync(mapWorld.tilesPath().resolve("settings.json"), settings);
     }
@@ -157,7 +158,7 @@ public final class UpdateWorldData implements Runnable {
 
     private record ChangingData(BlockPos spawn, long lastReset) {
         static ChangingData snapshot(final MapWorldInternal world) {
-            return new ChangingData(world.serverLevel().getSharedSpawnPos(), world.lastReset());
+            return new ChangingData(world.getAnySpawnPos(), world.lastReset());
         }
     }
 }

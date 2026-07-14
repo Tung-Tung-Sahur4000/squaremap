@@ -37,6 +37,7 @@ import xyz.jpenilla.squaremap.api.Pair;
 import xyz.jpenilla.squaremap.common.Logging;
 import xyz.jpenilla.squaremap.common.config.Messages;
 import xyz.jpenilla.squaremap.common.data.BiomeColors;
+import xyz.jpenilla.squaremap.common.data.BiomeExport;
 import xyz.jpenilla.squaremap.common.data.ChunkCoordinate;
 import xyz.jpenilla.squaremap.common.data.Image;
 import xyz.jpenilla.squaremap.common.data.MapWorldInternal;
@@ -218,8 +219,25 @@ public abstract class AbstractRender implements Runnable {
                 Logging.logger().warn("Exception mapping region {}", region, ex);
             }
         }
-        if (this.running()) {
-            this.mapWorld.saveImage(image);
+        this.saveRegion(image, region, true);
+    }
+
+    /**
+     * Save a completed region image and, when web biome export is enabled,
+     * export this region's biome data using the snapshots already loaded for
+     * the pixel render.
+     *
+     * @param overwriteBiomes whether to refresh biome data even if a file
+     *                        already exists; incremental background renders pass
+     *                        false, since biomes do not change once generated.
+     */
+    protected final void saveRegion(final Image image, final RegionCoordinate region, final boolean overwriteBiomes) {
+        if (!this.running()) {
+            return;
+        }
+        this.mapWorld.saveImage(image);
+        if (this.mapWorld.config().MAP_BIOMES_EXPORT_WEB) {
+            BiomeExport.export(this.mapWorld, region, this.chunks, this::running, overwriteBiomes);
         }
     }
 
@@ -625,8 +643,8 @@ public abstract class AbstractRender implements Runnable {
                 return future;
             }
 
-            final int x = chunkPos.x;
-            final int z = chunkPos.z;
+            final int x = chunkPos.x();
+            final int z = chunkPos.z();
 
             final List<CompletableFuture<@Nullable ChunkSnapshot>> neighborFutures = List.of(
                 this.snapshotDirect(new ChunkPos(x - 1, z - 1)),

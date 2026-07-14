@@ -70,6 +70,7 @@ export interface WorldSettings {
     zoom: WorldSettings_Zoom;
     marker_update_interval: number;
     tiles_update_interval: number;
+    biomes: boolean;
 }
 
 export interface PlayerData {

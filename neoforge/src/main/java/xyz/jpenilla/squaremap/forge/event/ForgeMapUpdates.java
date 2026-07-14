@@ -49,7 +49,7 @@ public final class ForgeMapUpdates {
             }
             if (event instanceof BlockEvent.EntityMultiPlaceEvent multiPlace) {
                 multiPlace.getReplacedBlockSnapshots().stream().map(BlockSnapshot::getPos)
-                    .forEach(pos -> this.markBlock(level, event.getPos()));
+                    .forEach(pos -> this.markBlock(level, pos));
             }
             this.markBlock(level, event.getPos());
         }));
@@ -108,7 +108,7 @@ public final class ForgeMapUpdates {
     }
 
     private void markChunk(final ServerLevel level, final ChunkPos chunk) {
-        this.markChunk(level, new ChunkCoordinate(chunk.x, chunk.z));
+        this.markChunk(level, new ChunkCoordinate(chunk.x(), chunk.z()));
     }
 
     private void markChunk(final ServerLevel level, final ChunkCoordinate chunk) {

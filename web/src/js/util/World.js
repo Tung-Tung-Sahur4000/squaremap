@@ -1,5 +1,6 @@
 import { Options, Rectangle, PolyLine, Polygon, Circle, Ellipse, Icon } from "./Markers.js";
 import { S } from "../Squaremap.js";
+import { biomeLayer } from "./Biome.js";
 import L from "leaflet";
 
 class World {
@@ -21,6 +22,8 @@ class World {
     zoom;
     /** @type {WorldSettings_Spawn} */
     spawn;
+    /** @type {boolean} whether per-region biome data is available for this world */
+    biomes;
 
     /**
      * @param json {Settings_World}
@@ -85,7 +88,11 @@ class World {
                 this.spawn = json.spawn;
                 this.marker_update_interval = json.marker_update_interval;
                 this.tiles_update_interval = json.tiles_update_interval;
+                this.biomes = json.biomes === true;
                 this.staticNeedsMarkerTick = true;
+
+                // drop any cached biome region data so freshly rendered data is used
+                biomeLayer.invalidate(this.name);
 
                 // set the scale for our projection calculations
                 S.setScale(this.zoom.max);
