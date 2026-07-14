@@ -37,6 +37,7 @@ import xyz.jpenilla.squaremap.api.Pair;
 import xyz.jpenilla.squaremap.common.Logging;
 import xyz.jpenilla.squaremap.common.config.Messages;
 import xyz.jpenilla.squaremap.common.data.BiomeColors;
+import xyz.jpenilla.squaremap.common.data.BiomeExport;
 import xyz.jpenilla.squaremap.common.data.ChunkCoordinate;
 import xyz.jpenilla.squaremap.common.data.Image;
 import xyz.jpenilla.squaremap.common.data.MapWorldInternal;
@@ -220,6 +221,12 @@ public abstract class AbstractRender implements Runnable {
         }
         if (this.running()) {
             this.mapWorld.saveImage(image);
+        }
+        if (this.running() && this.mapWorld.config().MAP_BIOMES) {
+            // Export surface biome data for this region so the web UI can show
+            // the biome name under the cursor. Reuses the snapshots just loaded
+            // for the pixel render above.
+            BiomeExport.export(this.mapWorld, region, this.chunks);
         }
     }
 
