@@ -52,6 +52,12 @@ class UICoordinates {
         this.showCoordinates = show;
         this.html = json.html == null ? "undefined" : json.html;
         this.coords = new Coords();
+        // On touch / small screens the bottom of the map is easily hidden behind
+        // the mobile browser chrome, so move the readout up next to the zoom
+        // controls at the top-left. Desktop keeps it in the bottom-left.
+        if (window.matchMedia("(max-width: 768px), (pointer: coarse)").matches) {
+            this.coords.setPosition("topleft");
+        }
         S.map.addControl(this.coords).addEventListener("mousemove", (event) => {
             if (S.worldList.curWorld != null) {
                 this.coords.update(this.html, S.toPoint(event.latlng));

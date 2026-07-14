@@ -551,6 +551,13 @@ div.leaflet-marker-pane img {
         padding: 0 10px;
         height: 40px;
     }
+    /* On mobile the readout is moved to the top-left, below the zoom/layers
+       controls (see UICoordinates.js) so it isn't hidden by browser chrome. */
+    .leaflet-top.leaflet-left .coordinates {
+        clear: both;
+        float: left;
+        margin-top: 8px;
+    }
     div.leaflet-control-layers.link,
     .leaflet-control-layers-toggle {
         width: 40px;
