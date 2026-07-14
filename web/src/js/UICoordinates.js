@@ -17,6 +17,7 @@ class UICoordinates {
                 const coords = L.DomUtil.create("div", "leaflet-control-layers coordinates");
                 this._coordsText = L.DomUtil.create("span", "coordinates-text", coords);
                 this._biomeText = L.DomUtil.create("span", "biome-text", coords);
+                this._biomeName = "";
                 this._coords = coords;
                 if (!show) {
                     this._coords.style.display = "none";
@@ -32,13 +33,20 @@ class UICoordinates {
                 this.updateBiome(point);
             },
             updateBiome: function (point) {
-                const world = S.worldList == null ? null : S.worldList.curWorld;
-                if (point == null || world == null || world.biomes !== true) {
-                    this._biomeText.textContent = "";
-                    return;
+                if (this._coords.style.display === "none") {
+                    return; // readout hidden: skip per-move biome lookup entirely
                 }
-                const name = biomeLayer.nameAt(world.name, Math.floor(point.x), Math.floor(point.y));
-                this._biomeText.textContent = name == null ? "" : name;
+                const world = S.worldList == null ? null : S.worldList.curWorld;
+                let name = "";
+                if (point != null && world != null && world.biomes === true) {
+                    name = biomeLayer.nameAt(world.name, Math.floor(point.x), Math.floor(point.y)) ?? "";
+                }
+                // Only touch the DOM when the biome actually changes; the cursor
+                // fires mousemove continuously but usually stays in one biome.
+                if (name !== this._biomeName) {
+                    this._biomeName = name;
+                    this._biomeText.textContent = name;
+                }
             },
         });
         this.showCoordinates = show;
