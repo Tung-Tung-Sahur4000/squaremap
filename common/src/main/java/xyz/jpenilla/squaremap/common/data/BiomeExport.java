@@ -1,10 +1,13 @@
 package xyz.jpenilla.squaremap.common.data;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.Registry;
@@ -34,7 +37,11 @@ import xyz.jpenilla.squaremap.common.util.chunksnapshot.ChunkSnapshot;
  * biome). Files are written to {@code tiles/<world>/biomes/<x>_<z>.json}.</p>
  *
  * <p>Sampling reuses the chunk snapshots already loaded for the pixel render of
- * the same region, so it adds negligible IO and no extra chunk loads.</p>
+ * the same region, so it adds no extra chunk loads. It is a single point sample
+ * at the surface height per 4x4 column and does not apply
+ * {@link xyz.jpenilla.squaremap.common.config.WorldConfig#MAP_BIOMES_BLEND
+ * biome blending}, so at biome borders the reported name can differ slightly
+ * from the blended tint drawn on the map &mdash; acceptable for a readout.</p>
  */
 @DefaultQualifier(NonNull.class)
 public final class BiomeExport {
@@ -46,27 +53,48 @@ public final class BiomeExport {
     private BiomeExport() {
     }
 
+    /**
+     * @param overwrite when false, skips regions that already have a biome file
+     *                  (used by incremental background renders, since biomes do
+     *                  not change once a region is generated); explicit full and
+     *                  radius renders pass true to always refresh.
+     */
     public static void export(
         final MapWorldInternal mapWorld,
         final RegionCoordinate region,
-        final AbstractRender.ChunkSnapshotManager chunks
+        final AbstractRender.ChunkSnapshotManager chunks,
+        final BooleanSupplier running,
+        final boolean overwrite
     ) {
+        final Path file = mapWorld.tilesPath()
+            .resolve("biomes")
+            .resolve(region.x() + "_" + region.z() + ".json");
+        if (!overwrite && Files.isRegularFile(file)) {
+            return;
+        }
         try {
-            final Map<String, Object> data = sample(mapWorld.serverLevel(), region, chunks);
-            final var file = mapWorld.tilesPath()
-                .resolve("biomes")
-                .resolve(region.x() + "_" + region.z() + ".json");
-            FileUtil.atomicWriteJsonAsync(file, data);
+            final @Nullable Map<String, Object> data = sample(mapWorld.serverLevel(), region, chunks, running);
+            if (data != null) {
+                // FileUtil.atomicWrite writes into the target's directory but does not create it,
+                // and nothing else creates the biomes/ subdirectory, so ensure it exists first.
+                Files.createDirectories(file.getParent());
+                FileUtil.atomicWriteJsonAsync(file, data);
+            }
         } catch (final Exception ex) {
             Logging.logger().warn("Failed to export biome data for region [{}, {}] in {}",
                 region.x(), region.z(), mapWorld.identifier().asString(), ex);
         }
     }
 
-    private static Map<String, Object> sample(
+    /**
+     * @return the sampled region data, or null if sampling was cancelled part
+     *         way through (so a partial file is never written).
+     */
+    private static @Nullable Map<String, Object> sample(
         final ServerLevel level,
         final RegionCoordinate region,
-        final AbstractRender.ChunkSnapshotManager chunks
+        final AbstractRender.ChunkSnapshotManager chunks,
+        final BooleanSupplier running
     ) {
         final Registry<Biome> registry = Util.biomeRegistry(level);
 
@@ -96,6 +124,9 @@ public final class BiomeExport {
 
         // Row-major (z outer, x inner); the frontend indexes with row * GRID + col.
         for (int row = 0; row < GRID; row++) {
+            if (!running.getAsBoolean()) {
+                return null; // render cancelled: don't write a partial file
+            }
             final int blockZ = baseZ + row * RES + RES / 2;
             for (int col = 0; col < GRID; col++) {
                 final int blockX = baseX + col * RES + RES / 2;
@@ -113,7 +144,7 @@ public final class BiomeExport {
                 final @Nullable Identifier key = registry.getKey(biome);
                 final String id = key == null ? "minecraft:unknown" : key.toString();
 
-                int index = paletteIndex.computeIfAbsent(id, $ -> {
+                final int index = paletteIndex.computeIfAbsent(id, $ -> {
                     palette.add(id);
                     return palette.size() - 1;
                 });

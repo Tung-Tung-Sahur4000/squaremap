@@ -33,10 +33,14 @@ public final class WorldConfig extends AbstractWorldConfig<Config> {
 
     public boolean MAP_BIOMES = true;
     public int MAP_BIOMES_BLEND = 3;
+    public boolean MAP_BIOMES_EXPORT_WEB = false;
 
     private void biomeSettings() {
         this.MAP_BIOMES = this.getBoolean("map.biomes.enabled", this.MAP_BIOMES);
         this.MAP_BIOMES_BLEND = Mth.clamp(this.getInt("map.biomes.blend-biomes", this.MAP_BIOMES_BLEND), 0, 15);
+        // Exports per-region biome data alongside tiles so the web UI can show the biome name under the
+        // cursor. Off by default because it adds a biome-sampling pass per region during rendering.
+        this.MAP_BIOMES_EXPORT_WEB = this.getBoolean("map.biomes.export-web-data", this.MAP_BIOMES_EXPORT_WEB);
     }
 
     public boolean MAP_GLASS_CLEAR = true;

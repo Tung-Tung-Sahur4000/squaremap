@@ -86,7 +86,7 @@ class Sidebar {
             }
         };
 
-        document.addEventListener("click", (e) => {
+        this.onDocumentClick = (e) => {
             if (
                 this.hoverCapable.matches &&
                 !this.sidebar.contains(e.target) &&
@@ -95,13 +95,15 @@ class Sidebar {
             ) {
                 this.show(false);
             }
-        });
+        };
+        document.addEventListener("click", this.onDocumentClick);
 
-        document.addEventListener("keydown", (e) => {
+        this.onKeydown = (e) => {
             if (e.key === "Escape" && this.sidebar.classList.contains("show") && !this.pin.pinned) {
                 this.toggle(false);
             }
-        });
+        };
+        document.addEventListener("keydown", this.onKeydown);
     }
     /**
      * Explicitly open or close the sidebar (used by the toggle button,
@@ -126,6 +128,8 @@ class Sidebar {
         }
     }
     remove() {
+        document.removeEventListener("click", this.onDocumentClick);
+        document.removeEventListener("keydown", this.onKeydown);
         this.sidebar.remove();
         this.backdrop.remove();
         this.toggleButton.remove();

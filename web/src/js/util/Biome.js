@@ -1,6 +1,7 @@
 const REGION_SIZE = 512; // blocks per region tile
 const RES = 4; // biome sample resolution in blocks (Minecraft biomes are 4x4)
 const GRID = REGION_SIZE / RES; // 128 samples per region axis
+const RETRY_MS = 15000; // how long to wait before refetching a missing region
 
 /**
  * Client-side biome lookup. Biome data is exported by the server as compact
@@ -8,19 +9,22 @@ const GRID = REGION_SIZE / RES; // 128 samples per region axis
  * resolution, mirroring how Minecraft stores biomes. Regions are fetched lazily
  * the first time the cursor enters them and cached for the session.
  *
- * The lookup degrades gracefully: if a region file is missing (e.g. biome
- * export is disabled server-side, or that region has not been rendered yet)
- * the name is simply reported as null and nothing is shown.
+ * The lookup degrades gracefully: if a region file is missing (e.g. that region
+ * has not been rendered yet, or biome export is disabled server-side) the name
+ * is reported as null and nothing is shown. Missing regions are retried after a
+ * short cooldown, so biomes appear once the region is eventually rendered
+ * without needing a page reload.
  */
 class BiomeLayer {
     constructor() {
-        /** @type {Map<string, {palette: string[] | null, cells: Uint16Array | null}>} */
+        /** @type {Map<string, {palette: string[] | null, cells: Uint16Array | null, loading: boolean, retryAt: number}>} */
         this.regions = new Map();
     }
 
     /**
      * Biome display name at the given block coordinate, or null if not (yet)
-     * available. Triggers a background fetch on first access to a region.
+     * available. Triggers a background fetch on first access to a region, and a
+     * refetch if a previous attempt found nothing and the cooldown has elapsed.
      * @param {string} world
      * @param {number} blockX
      * @param {number} blockZ
@@ -33,19 +37,22 @@ class BiomeLayer {
 
         let region = this.regions.get(key);
         if (region === undefined) {
-            region = { palette: null, cells: null };
+            region = { palette: null, cells: null, loading: false, retryAt: 0 };
             this.regions.set(key, region);
-            this.#fetchRegion(world, rx, rz, region);
-            return null;
-        }
-        if (region.cells === null || region.palette === null) {
-            return null; // still loading, or region has no data
         }
 
-        const col = (blockX - rx * REGION_SIZE) >> 2;
-        const row = (blockZ - rz * REGION_SIZE) >> 2;
-        const idx = region.cells[row * GRID + col];
-        return region.palette[idx] ?? null;
+        if (region.cells !== null && region.palette !== null) {
+            const col = (blockX - rx * REGION_SIZE) >> 2;
+            const row = (blockZ - rz * REGION_SIZE) >> 2;
+            const idx = region.cells[row * GRID + col];
+            return region.palette[idx] ?? null;
+        }
+
+        // Not loaded: fetch (or refetch after the cooldown), but never overlap requests.
+        if (!region.loading && Date.now() >= region.retryAt) {
+            this.#fetchRegion(world, rx, rz, region);
+        }
+        return null;
     }
 
     /** Drop cached regions for a world so fresh data is fetched after a reload. */
@@ -58,17 +65,22 @@ class BiomeLayer {
     }
 
     #fetchRegion(world, rx, rz, region) {
+        region.loading = true;
         fetch(`tiles/${world}/biomes/${rx}_${rz}.json`)
             .then((res) => (res.ok ? res.json() : null))
             .then((json) => {
-                if (json === null || !Array.isArray(json.palette) || !Array.isArray(json.rle)) {
-                    return; // missing / malformed: stays null, silently ignored
+                if (json !== null && Array.isArray(json.palette) && Array.isArray(json.rle)) {
+                    region.palette = json.palette.map(prettyBiomeName);
+                    region.cells = decodeRle(json.rle, GRID * GRID);
+                } else {
+                    region.retryAt = Date.now() + RETRY_MS; // missing / malformed: try again later
                 }
-                region.palette = json.palette.map(prettyBiomeName);
-                region.cells = decodeRle(json.rle, GRID * GRID);
             })
             .catch(() => {
-                /* network error: leave region empty, will not retry */
+                region.retryAt = Date.now() + RETRY_MS; // network error: try again later
+            })
+            .finally(() => {
+                region.loading = false;
             });
     }
 }

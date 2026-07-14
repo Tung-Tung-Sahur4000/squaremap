@@ -219,14 +219,25 @@ public abstract class AbstractRender implements Runnable {
                 Logging.logger().warn("Exception mapping region {}", region, ex);
             }
         }
-        if (this.running()) {
-            this.mapWorld.saveImage(image);
+        this.saveRegion(image, region, true);
+    }
+
+    /**
+     * Save a completed region image and, when web biome export is enabled,
+     * export this region's biome data using the snapshots already loaded for
+     * the pixel render.
+     *
+     * @param overwriteBiomes whether to refresh biome data even if a file
+     *                        already exists; incremental background renders pass
+     *                        false, since biomes do not change once generated.
+     */
+    protected final void saveRegion(final Image image, final RegionCoordinate region, final boolean overwriteBiomes) {
+        if (!this.running()) {
+            return;
         }
-        if (this.running() && this.mapWorld.config().MAP_BIOMES) {
-            // Export surface biome data for this region so the web UI can show
-            // the biome name under the cursor. Reuses the snapshots just loaded
-            // for the pixel render above.
-            BiomeExport.export(this.mapWorld, region, this.chunks);
+        this.mapWorld.saveImage(image);
+        if (this.mapWorld.config().MAP_BIOMES_EXPORT_WEB) {
+            BiomeExport.export(this.mapWorld, region, this.chunks, this::running, overwriteBiomes);
         }
     }
 
