@@ -1,13 +1,21 @@
 const REGION_SIZE = 512; // blocks per region tile
 const RES = 4; // biome sample resolution in blocks (Minecraft biomes are 4x4)
 const GRID = REGION_SIZE / RES; // 128 samples per region axis
+const CELLS = GRID * GRID; // 16384 samples per region
 const RETRY_MS = 15000; // how long to wait before refetching a missing region
+const MAX_REGIONS = 512; // cap cached regions so long panning sessions stay bounded
 
 /**
  * Client-side biome lookup. Biome data is exported by the server as compact
  * per-region files (palette + run-length-encoded indices) at 4-block
  * resolution, mirroring how Minecraft stores biomes. Regions are fetched lazily
  * the first time the cursor enters them and cached for the session.
+ *
+ * Memory: the run-length encoding is kept compact and looked up with a binary
+ * search over run start offsets, rather than expanded into a full 16384-cell
+ * grid. Since biomes are mostly long uniform runs this is a few hundred bytes
+ * per region instead of ~32 KB. The cache is also capped at {@link MAX_REGIONS}
+ * with oldest-first eviction so a long panning session can't grow without bound.
  *
  * The lookup degrades gracefully: if a region file is missing (e.g. that region
  * has not been rendered yet, or biome export is disabled server-side) the name
@@ -17,7 +25,10 @@ const RETRY_MS = 15000; // how long to wait before refetching a missing region
  */
 class BiomeLayer {
     constructor() {
-        /** @type {Map<string, {palette: string[] | null, cells: Uint16Array | null, loading: boolean, retryAt: number}>} */
+        /**
+         * @type {Map<string, {palette: string[] | null, starts: Int32Array | null,
+         *   values: Uint16Array | null, total: number, loading: boolean, retryAt: number}>}
+         */
         this.regions = new Map();
     }
 
@@ -37,15 +48,22 @@ class BiomeLayer {
 
         let region = this.regions.get(key);
         if (region === undefined) {
-            region = { palette: null, cells: null, loading: false, retryAt: 0 };
+            if (this.regions.size >= MAX_REGIONS) {
+                this.regions.delete(this.regions.keys().next().value); // evict oldest
+            }
+            region = { palette: null, starts: null, values: null, total: 0, loading: false, retryAt: 0 };
             this.regions.set(key, region);
         }
 
-        if (region.cells !== null && region.palette !== null) {
+        if (region.starts !== null && region.palette !== null) {
             const col = (blockX - rx * REGION_SIZE) >> 2;
             const row = (blockZ - rz * REGION_SIZE) >> 2;
-            const idx = region.cells[row * GRID + col];
-            return region.palette[idx] ?? null;
+            const idx = row * GRID + col;
+            if (idx >= region.total) {
+                return null; // cell not covered by the data
+            }
+            const paletteIdx = region.values[runIndexAt(region.starts, idx)];
+            return region.palette[paletteIdx] ?? null;
         }
 
         // Not loaded: fetch (or refetch after the cooldown), but never overlap requests.
@@ -71,7 +89,7 @@ class BiomeLayer {
             .then((json) => {
                 if (json !== null && Array.isArray(json.palette) && Array.isArray(json.rle)) {
                     region.palette = json.palette.map(prettyBiomeName);
-                    region.cells = decodeRle(json.rle, GRID * GRID);
+                    indexRle(json.rle, region);
                 } else {
                     region.retryAt = Date.now() + RETRY_MS; // missing / malformed: try again later
                 }
@@ -86,21 +104,47 @@ class BiomeLayer {
 }
 
 /**
- * @param {number[]} rle flat [value, length, value, length, ...]
- * @param {number} size
- * @returns {Uint16Array}
+ * Index a flat run-length array [value, length, value, length, ...] into compact
+ * parallel arrays (run start offset + run value) on the region, without
+ * expanding the full cell grid.
+ * @param {number[]} rle
+ * @param {{starts: Int32Array | null, values: Uint16Array | null, total: number}} region
  */
-function decodeRle(rle, size) {
-    const out = new Uint16Array(size);
-    let p = 0;
-    for (let i = 0; i + 1 < rle.length && p < size; i += 2) {
-        const value = rle[i];
-        const len = rle[i + 1];
-        for (let j = 0; j < len && p < size; j++) {
-            out[p++] = value;
+function indexRle(rle, region) {
+    const runs = rle.length >> 1;
+    const starts = new Int32Array(runs);
+    const values = new Uint16Array(runs);
+    let offset = 0;
+    for (let i = 0; i < runs; i++) {
+        starts[i] = offset;
+        values[i] = rle[2 * i];
+        offset += rle[2 * i + 1];
+    }
+    region.starts = starts;
+    region.values = values;
+    region.total = Math.min(offset, CELLS);
+}
+
+/**
+ * Rightmost run whose start offset is <= idx (binary search).
+ * @param {Int32Array} starts ascending run start offsets, starts[0] === 0
+ * @param {number} idx
+ * @returns {number}
+ */
+function runIndexAt(starts, idx) {
+    let lo = 0;
+    let hi = starts.length - 1;
+    let run = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (starts[mid] <= idx) {
+            run = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
         }
     }
-    return out;
+    return run;
 }
 
 /**
